@@ -15,6 +15,41 @@
 
 ---
 
+## 📦 从仓库获取（`git clone`）
+
+仓库里**只放源码**，不含 `rclone.exe`（85 MB 二进制）与打包产物。按你的需要选一条：
+
+### A. 只想要能跑的便携版（推荐）
+
+去 [Releases](../../releases) 下载 **`USB-Sync-Tool-Portable.zip`**，解压双击即可——包内已含 `rclone.exe`。
+
+### B. 从源码运行
+
+```powershell
+git clone <仓库地址>
+cd USB-Sync-Tool
+
+# 二选一：装上 rclone，或手动放一份 rclone.exe 到 src\ 目录
+winget install Rclone.Rclone
+
+.\src\USB-Sync.exe
+```
+
+`rclone-locate.ps1` 会按下面的顺序自动查找 rclone，任一处命中即可：
+
+1. 脚本同目录的 `rclone.exe`（便携版就是这么工作的）
+2. `%APPDATA%\USB-Sync-Tool\rclone-path.txt` 里手动指定过的路径
+3. 系统 PATH（`winget install Rclone.Rclone` 走这条）
+4. WinGet 包目录 `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Rclone.Rclone_*`
+5. 常见安装位置（`Program Files\rclone`、`%USERPROFILE%\rclone` 等）
+
+都没找到时会明确报错，不会静默失败。
+
+> 仓库内 `src\USB-Sync.exe` 是启动器，核心逻辑在 `src\*.ps1`；
+> `src\test-setup.ps1` 可做环境自检。
+
+---
+
 ## ✨ 功能特性
 
 | 功能 | 说明 |
@@ -162,7 +197,7 @@ G:\.sync-backup\
 ## 📂 文件结构
 
 ```
-USB-Sync-Tool-Portable/
+USB-Sync-Tool-Portable/          （便携包；仓库版这些文件都在 src/ 下）
 ├── USB-Sync.exe        ← 主程序（双击启动）
 ├── rclone.exe          ← 内置同步引擎（无需安装）
 ├── sync-gui.ps1        ← 图形界面脚本
@@ -201,6 +236,8 @@ USB-Sync-Tool-Portable/
 
 ### 换电脑怎么用？
 把整个 `USB-Sync-Tool-Portable` 文件夹拷到新电脑，双击 `USB-Sync.exe` 即可——不需要在新电脑安装任何东西。
+
+> 若是从仓库 clone 的源码版（没有 `rclone.exe`），按上面「从仓库获取」一节处理。
 
 ### 想用另一个版本的 rclone？
 把新的 `rclone.exe` 直接替换文件夹里的同名文件即可（自动优先使用同目录版本）。
