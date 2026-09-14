@@ -1,0 +1,29 @@
+# ── 第三方 rclone 引擎与官方安装包（体积大，不入库）──────────
+# 便携版由 rclone-locate.ps1 自动查找：同目录 → 配置 → PATH → WinGet → 常见位置。
+# 需要自带引擎时，从 https://rclone.org/downloads/ 获取，或下载 Release 里的便携包。
+src/rclone.exe
+rclone-*.zip
+rclone-current-windows-amd64.zip
+
+# ── 打包产物 ──────────────────────────────────────────────
+USB-Sync-Tool-Portable.zip
+*-Portable.zip
+dist/
+
+# ── 开发期临时脚本 ────────────────────────────────────────
+_ui-test.ps1
+*.tmp
+*.bak
+
+# ── 运行日志 ──────────────────────────────────────────────
+*.log
+
+# ── 操作系统 ──────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ── 编辑器 / IDE ──────────────────────────────────────────
+.vscode/
+.idea/
+*.swp

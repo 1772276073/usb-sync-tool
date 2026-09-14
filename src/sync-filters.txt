@@ -1,0 +1,12 @@
+# Sync filters for rclone
+# Lines starting with # are comments
+# Exclude common system/temp files
+
+- .DS_Store
+- Thumbs.db
+- desktop.ini
+- *.tmp
+- *.temp
+- ~$*
+- .sync-backup/**
+- rclone/**
