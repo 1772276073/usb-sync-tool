@@ -1,10 +1,83 @@
-﻿# USB 同步工具（便携版）
+﻿# USB 同步工具
 
-基于 rclone 的 U盘同步工具，**绿色免安装**：自带 rclone、无需配置，解压即用，换电脑拷贝整个文件夹即可。
+> **v2.0（当前）**：纯 Rust 重写 — 原生同步引擎 + egui 深色界面，**单文件便携 exe，不再依赖 rclone / PowerShell**。
+> v1（PowerShell + rclone）文档保留在本页下方，源码在 `src/`，已被 v2 取代。
 
 ---
 
-## 🚀 快速开始
+## 🚀 v2 快速开始
+
+1. 双击 **`USB-Sync-v2.exe`**（或 `usb-sync\target\release\usb-sync.exe`）
+2. 填本地路径与U盘路径，选同步模式，点 **开始同步**
+
+无任何运行时依赖：不需要 rclone、不需要 PowerShell、不需要管理员权限。
+
+## ✨ v2 是什么
+
+| | v1（rclone + PowerShell） | **v2（纯 Rust）** |
+|---|---|---|
+| 启动 | 2-3 秒（PowerShell 冷启动） | **< 1 秒** |
+| 产物 | 30MB rclone.exe + 多个脚本 | **单 exe ≈ 10MB** |
+| 进度 | 临时文件轮询、文件数百分比 | **字节级实时进度 + MB/s 速度** |
+| 取消 | 硬杀进程（状态损坏） | **优雅停止，状态不损坏** |
+| 排除规则 | GUI 有 bug（实际未生效） | 生效，可在界面自定义 |
+| 双向同步 | rclone bisync（需 resync） | **快照式，首次自动合并，无 resync 中断** |
+| 界面 | WinForms 手绘控件 | egui GPU 渲染，Ant Design 深色主题 |
+
+### 同步模式（4 种，与 v1 一致）
+
+- **双向同步**：快照比对，增/删/改双向传播；两端同改（冲突）→ 时间新者胜、败者自动备份
+- **推送到U盘 / 从U盘拉取**：单向增量复制，对端多余文件保留（不删除）
+- **预览变更**：只列出将执行的操作，不落盘
+
+### 版本管理
+
+被覆盖/删除的旧文件自动备份到 `<U盘>\.sync-backup\<运行时间戳>\<相对路径>`——保留原目录结构，整体拷回即可还原。取消或出错时不写状态快照，下次同步自动按首次合并处理，数据不会丢。
+
+### 方案预设
+
+保存常用路径+模式+备份目录+排除规则组合，存于 `%APPDATA%\USB-Sync-Tool\profiles.json`（**与 v1 同一文件**，旧方案可直接读取）。
+
+### 命令行版（定时任务）
+
+```powershell
+usb-sync-cli.exe sync   --local D:\Docs --usb G:\Docs    # 双向同步
+usb-sync-cli.exe push   --local D:\Docs --usb G:\Docs    # 推送
+usb-sync-cli.exe pull   --local D:\Docs --usb G:\Docs    # 拉取
+usb-sync-cli.exe preview --local D:\Docs --usb G:\Docs   # 预览
+# 附加：--backup-dir <目录>  --threads 4  --filters-file <规则文件>
+```
+
+### 开发构建
+
+```
+usb-sync\
+├── Cargo.toml            # Rust 工程
+├── build.cmd             # 一键构建（自动接通 Rust GNU 工具链 + MSYS2 binutils）
+├── test-scenario.ps1     # 场景验证（首次合并/修改/删除/冲突/过滤/推送/拉取/预览）
+└── src\
+    ├── sync\             # 同步引擎：filters/scan/plan/exec/state/progress
+    ├── app.rs            # egui 图形界面
+    ├── cli.rs            # 命令行入口
+    └── ...
+```
+
+- 工具链：rustup `stable-gnu`（自包含，无需 Visual Studio）；链接期 binutils 来自 `C:\msys64\mingw64\bin`
+- 构建产物输出在 vault 外的 `E:\rust-target\usb-sync\`（见 `.cargo\config.toml`）
+- 单元测试：`cargo test`；场景验证：`build.cmd test && powershell -File test-scenario.ps1`
+
+### v2 技术要点
+
+- **双向同步状态快照**：`<U盘>\.usb-sync\state.json`，记录每文件两端 size+mtime；快照随U盘走，换电脑可继续正确同步
+- **FAT 时间戳容差**：mtime 比对带 2 秒窗口（FAT32/exFAT 时间粒度为 2s），避免假性全量差异
+- **并行**：jwalk 多线程扫描 + 8 线程复制（可调），复制后恢复源文件 mtime（增量比对依据）
+- **过滤规则**：`*.tmp`（名称，任意层级）、`/dir/**`（锚定根）、`**/name`（任意层级名称）；内置规则永久排除 `.sync-backup/` 与 `.usb-sync/`
+
+---
+
+# 以下为 v1（PowerShell + rclone 旧版）文档
+
+## 🚀 快速开始（v1）
 
 1. 解压 `USB-Sync-Tool-Portable.zip`
 2. 双击 **`USB-Sync.exe`**
@@ -12,41 +85,6 @@
 4. 点击 **开始同步**
 
 > 无需安装 rclone、无需配置 PATH、无需管理员权限。整个文件夹拷到任何 Windows 10/11 电脑即可运行。
-
----
-
-## 📦 从仓库获取（`git clone`）
-
-仓库里**只放源码**，不含 `rclone.exe`（85 MB 二进制）与打包产物。按你的需要选一条：
-
-### A. 只想要能跑的便携版（推荐）
-
-去 [Releases](../../releases) 下载 **`USB-Sync-Tool-Portable.zip`**，解压双击即可——包内已含 `rclone.exe`。
-
-### B. 从源码运行
-
-```powershell
-git clone <仓库地址>
-cd USB-Sync-Tool
-
-# 二选一：装上 rclone，或手动放一份 rclone.exe 到 src\ 目录
-winget install Rclone.Rclone
-
-.\src\USB-Sync.exe
-```
-
-`rclone-locate.ps1` 会按下面的顺序自动查找 rclone，任一处命中即可：
-
-1. 脚本同目录的 `rclone.exe`（便携版就是这么工作的）
-2. `%APPDATA%\USB-Sync-Tool\rclone-path.txt` 里手动指定过的路径
-3. 系统 PATH（`winget install Rclone.Rclone` 走这条）
-4. WinGet 包目录 `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Rclone.Rclone_*`
-5. 常见安装位置（`Program Files\rclone`、`%USERPROFILE%\rclone` 等）
-
-都没找到时会明确报错，不会静默失败。
-
-> 仓库内 `src\USB-Sync.exe` 是启动器，核心逻辑在 `src\*.ps1`；
-> `src\test-setup.ps1` 可做环境自检。
 
 ---
 
@@ -81,7 +119,7 @@ winget install Rclone.Rclone
 │  日志                                                      │
 │  ┌──────────────────────────────────────────────────────┐ │
 │  │ [22:00:00] 开始同步: 推送到U盘          （蓝色）      │ │
-│  │ [22:00:00] 本地: F:\Documents\Work Backups（灰色）   │ │
+│  │ [22:00:00] 本地: F:\Clash\Telegram Desktop（灰色）   │ │
 │  │ [22:00:08] 同步成功完成                （绿色）      │ │
 │  └──────────────────────────────────────────────────────┘ │
 │  [开始同步]  [取消]                          [关闭]      │
@@ -112,7 +150,7 @@ winget install Rclone.Rclone
 方案保存在 `%APPDATA%\USB-Sync-Tool\profiles.json`，重启软件仍然存在。
 
 **示例**：
-- "工作文件"：`D:\Work\ProjectFiles` ↔ `G:\Work` + 推送到U盘
+- "工作文件"：`F:\Clash\Telegram Desktop` ↔ `G:\TEL` + 推送到U盘
 - "文档备份"：`D:\Documents` ↔ `G:\Docs` + 双向同步
 
 ---
@@ -197,7 +235,7 @@ G:\.sync-backup\
 ## 📂 文件结构
 
 ```
-USB-Sync-Tool-Portable/          （便携包；仓库版这些文件都在 src/ 下）
+USB-Sync-Tool-Portable/
 ├── USB-Sync.exe        ← 主程序（双击启动）
 ├── rclone.exe          ← 内置同步引擎（无需安装）
 ├── sync-gui.ps1        ← 图形界面脚本
@@ -236,8 +274,6 @@ USB-Sync-Tool-Portable/          （便携包；仓库版这些文件都在 src/
 
 ### 换电脑怎么用？
 把整个 `USB-Sync-Tool-Portable` 文件夹拷到新电脑，双击 `USB-Sync.exe` 即可——不需要在新电脑安装任何东西。
-
-> 若是从仓库 clone 的源码版（没有 `rclone.exe`），按上面「从仓库获取」一节处理。
 
 ### 想用另一个版本的 rclone？
 把新的 `rclone.exe` 直接替换文件夹里的同名文件即可（自动优先使用同目录版本）。

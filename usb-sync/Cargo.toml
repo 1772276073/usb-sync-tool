@@ -1,0 +1,44 @@
+[package]
+name = "usb-sync"
+version = "2.1.0"
+edition = "2021"
+description = "USB 同步工具 v2 — 纯 Rust 原生同步引擎 + egui 深色界面，单文件便携"
+license = "MIT"
+
+[lib]
+name = "usb_sync"
+path = "src/lib.rs"
+
+[[bin]]
+name = "usb-sync"
+path = "src/main.rs"
+
+[[bin]]
+name = "usb-sync-cli"
+path = "src/bin/usb-sync-cli.rs"
+
+[dependencies]
+eframe = "0.37"
+egui = "0.37"
+rfd = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jwalk = "0.9"
+crossbeam-channel = "0.5"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console"] }
+
+[build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+codegen-units = 1
+panic = "abort"

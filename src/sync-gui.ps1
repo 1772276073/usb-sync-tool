@@ -286,9 +286,12 @@ $script:ProfilesFile = Join-Path $env:APPDATA "USB-Sync-Tool\profiles.json"
 $script:profiles = @()
 
 function Load-Profiles {
+    $script:profiles = @()
     if (Test-Path $script:ProfilesFile) {
-        try { $script:profiles = @(Get-Content $script:ProfilesFile -Raw | ConvertFrom-Json) }
-        catch { $script:profiles = @() }
+        try {
+            $parsed = Get-Content $script:ProfilesFile -Raw | ConvertFrom-Json
+            if ($parsed) { foreach ($p in $parsed) { $script:profiles += $p } }
+        } catch { $script:profiles = @() }
     }
 }
 
@@ -359,12 +362,13 @@ function Write-Log {
 
 # Sync script
 $syncScript = {
-    param($LocalPath, $UsbPath, $Action, $BackupDir, $RclonePath, $Proc)
+    param($LocalPath, $UsbPath, $Action, $BackupDir, $RclonePath, $Proc, $OutFile, $ErrFile, $ProgFile)
     if (-not (Test-Path $RclonePath)) { throw "找不到 rclone: $RclonePath" }
     if (-not (Test-Path $LocalPath)) { New-Item -ItemType Directory -Path $LocalPath -Force | Out-Null }
     if (-not (Test-Path $UsbPath)) { throw "U盘路径不存在: $UsbPath" }
     if (-not (Test-Path $BackupDir)) { New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null }
-    $flags = @("--backup-dir", $BackupDir, "--suffix", ".{time:2006-01-02_150405}")
+    # --progress 输出"已传文件数/需传文件数"（如 Transferred: 288/400，为文件数而非字节），供进度条显示真实进度
+    $flags = @("--backup-dir", $BackupDir, "--suffix", ".{time:2006-01-02_150405}", "--progress")
     switch ($Action) {
         "双向同步" { $base = @("bisync", $LocalPath, $UsbPath) }
         "推送到U盘" { $base = @("copy", $LocalPath, $UsbPath) }
@@ -373,24 +377,50 @@ $syncScript = {
     }
     # 参数含空格时加引号，避免路径被拆分成多个参数
     $q = { param($cmd) (($cmd | ForEach-Object { if ($_ -match "\s") { '"' + $_ + '"' } else { $_ } }) -join " ") }
-    $Proc.StartInfo.Arguments = & $q ($base + $flags)
-    $Proc.Start() | Out-Null
-    # 异步读取输出，避免大输出时管道阻塞导致死锁
-    $outTask = $Proc.StandardOutput.ReadToEndAsync()
-    $errTask = $Proc.StandardError.ReadToEndAsync()
-    $Proc.WaitForExit()
-    $exitCode = $Proc.ExitCode; $out = $outTask.Result; $err = $errTask.Result
-    # 双向同步首次运行（无基准记录）需 --resync，自动重试一次建立基准
-    if ($Action -eq "双向同步" -and $exitCode -ne 0 -and (($out + $err) -match "resync")) {
-        $Proc.StartInfo.Arguments = & $q ($base + @("--resync") + $flags)
+    function Invoke-Once {
+        param($cmd)
+        [System.IO.File]::WriteAllText($OutFile, "")
+        [System.IO.File]::WriteAllText($ErrFile, "")
+        [System.IO.File]::WriteAllText($ProgFile, "")
+        $Proc.StartInfo.Arguments = & $q $cmd
         $Proc.Start() | Out-Null
+        # stdout 后台读（防死锁）；stderr 逐行同步读并实时写文件，供主会话读取真实进度
         $outTask = $Proc.StandardOutput.ReadToEndAsync()
-        $errTask = $Proc.StandardError.ReadToEndAsync()
+        $sr = $Proc.StandardError
+        while (-not $sr.EndOfStream) {
+            $line = $sr.ReadLine()
+            if ($line) {
+                [System.IO.File]::AppendAllText($ErrFile, $line + "`n")
+                [System.IO.File]::AppendAllText($ProgFile, $line + "`n")
+            }
+        }
         $Proc.WaitForExit()
-        $exitCode = $Proc.ExitCode; $out = $outTask.Result; $err = $errTask.Result
+        return @{ ExitCode = $Proc.ExitCode; Out = $outTask.Result; Err = [System.IO.File]::ReadAllText($ErrFile) }
     }
-    return @{ ExitCode = $exitCode; Output = $out; Error = $err }
+    $res = Invoke-Once ($base + $flags)
+    # 双向同步首次运行（无基准记录）需 --resync，自动重试一次建立基准
+    if ($Action -eq "双向同步" -and $res.ExitCode -ne 0 -and (($res.Out + $res.Err) -match "resync")) {
+        $res = Invoke-Once ($base + @("--resync") + $flags)
+    }
+    return @{ ExitCode = $res.ExitCode; Output = $res.Out; Error = $res.Err }
 }
+
+# ---- 真实进度：读取 rclone 统计文件，解析"已传/需传"文件数 ----
+function Get-SyncProgress {
+    param($file)
+    if (-not (Test-Path $file)) { return $null }
+    try { $content = [System.IO.File]::ReadAllText($file) } catch { return $null }
+    $m = [regex]::Matches($content, "Transferred:\s*(\d+)\s*/\s*(\d+)")
+    if ($m.Count -gt 0) {
+        $last = $m[$m.Count - 1]
+        return @{ done = [int]$last.Groups[1].Value; total = [int]$last.Groups[2].Value }
+    }
+    return $null
+}
+# 本次运行的临时输出/统计文件
+$script:OutFile = Join-Path $env:TEMP ("usbsync-out-" + [guid]::NewGuid().ToString("N") + ".log")
+$script:ErrFile = Join-Path $env:TEMP ("usbsync-err-" + [guid]::NewGuid().ToString("N") + ".log")
+$script:ProgFile = Join-Path $env:TEMP ("usbsync-prog-" + [guid]::NewGuid().ToString("N") + ".log")
 
 # Sync button
 $btnSync.Add_Click({
@@ -434,11 +464,22 @@ $btnSync.Add_Click({
     $script:ps.AddArgument($bd) | Out-Null
     $script:ps.AddArgument($script:rclonePath) | Out-Null
     $script:ps.AddArgument($script:syncProc) | Out-Null
+    $script:ps.AddArgument($script:OutFile) | Out-Null
+    $script:ps.AddArgument($script:ErrFile) | Out-Null
+    $script:ps.AddArgument($script:ProgFile) | Out-Null
     $ar = $script:ps.BeginInvoke()
     while (-not $ar.IsCompleted) {
-        Start-Sleep -Milliseconds 50
+        Start-Sleep -Milliseconds 100
         $elapsed = (Get-Date) - $script:syncStartTime
-        $lblStatus.Text = "同步中... {0:mm\:ss}" -f $elapsed
+        $prog = Get-SyncProgress $script:ProgFile
+        if ($prog -and $prog.total -gt 0) {
+            $pct = [int]($prog.done / $prog.total * 100)
+            if ($pct -gt 100) { $pct = 100 }
+            $bar.Value = $pct
+            $lblStatus.Text = "同步中... $($prog.done)/$($prog.total) 个文件  {0:mm\:ss}" -f $elapsed
+        } else {
+            $lblStatus.Text = "同步中... {0:mm\:ss}" -f $elapsed
+        }
         [System.Windows.Forms.Application]::DoEvents()
     }
     try {
@@ -475,8 +516,8 @@ $btnSync.Add_Click({
         if ($r) {
             if ($r.Output) { Write-Log ""; Write-Log "输出:" -Color $infoColor; Write-Log ($r.Output -replace "`r", "`n") -Color $infoColor }
             if ($r.Error) {
-                # 过滤无害提示（rclone 无配置文件时的默认配置 NOTICE），只保留真正的警告/错误
-                $errText = (@($r.Error -split "`r?`n") | Where-Object { $_ -and $_ -notmatch "NOTICE: Config file .* not found - using defaults" }) -join "`n"
+                # 过滤 rclone 进度/统计行（进度由进度条显示）和无害提示，只保留真正的警告/错误
+                $errText = (@($r.Error -split "`r?`n") | Where-Object { $_ -and $_ -notmatch "Transferred:|Checks:|Elapsed|ETA|Transferring:|\*\s+.*%" }) -join "`n"
                 if ($errText) { Write-Log ""; Write-Log "警告/错误:" -Color $errColor; Write-Log $errText -Color $errColor }
             }
         }
@@ -489,6 +530,7 @@ $btnSync.Add_Click({
         $btnClose.Enabled = $true
         $animTimer.Stop()
         $bar.Value = 0
+        Remove-Item $script:OutFile, $script:ErrFile, $script:ProgFile -ErrorAction SilentlyContinue
     }
 })
 

@@ -54,8 +54,8 @@ function Get-RclonePath {
         if ($c -and (Test-Path $c)) { return $c }
     }
 
-    # 4. Fallback: typical WinGet install path for the current user
-    $legacy = Join-Path $env:USERPROFILE "AppData\Local\Microsoft\WinGet\Packages\Rclone.Rclone_Microsoft.Winget.Source_8wekyb3d8bbwe\rclone-v1.75.0-windows-amd64\rclone.exe"
+    # 4. Fallback: last known WinGet install path
+    $legacy = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\Rclone.Rclone_Microsoft.Winget.Source_8wekyb3d8bbwe\rclone-v1.75.0-windows-amd64\rclone.exe"
     if (Test-Path $legacy) { return $legacy }
 
     return $null

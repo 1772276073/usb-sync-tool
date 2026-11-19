@@ -1,29 +1,27 @@
-# ── 第三方 rclone 引擎与官方安装包（体积大，不入库）──────────
-# 便携版由 rclone-locate.ps1 自动查找：同目录 → 配置 → PATH → WinGet → 常见位置。
-# 需要自带引擎时，从 https://rclone.org/downloads/ 获取，或下载 Release 里的便携包。
-src/rclone.exe
-rclone-*.zip
-rclone-current-windows-amd64.zip
+# ---- 交付二进制与安装包（仓库只管源码与文档）----
+*.exe
+*.zip
 
-# ── 打包产物 ──────────────────────────────────────────────
-USB-Sync-Tool-Portable.zip
-*-Portable.zip
-dist/
+# 历史发布目录（81MB 旧版本）
+USB-Sync-Tool-最新版/
 
-# ── 开发期临时脚本 ────────────────────────────────────────
-_ui-test.ps1
-*.tmp
-*.bak
+# 预览与调试临时文件
+ui-preview.png
+ui-icon-preview.png
+titlebar-zoom.png
+zoom-dbg.png
 
-# ── 运行日志 ──────────────────────────────────────────────
-*.log
+# Rust / Cargo（构建产物在 E:\rust-target，正常也不会进入仓库）
+usb-sync/target/
+usb-sync/**/target/
 
-# ── 操作系统 ──────────────────────────────────────────────
+# 系统与编辑器杂物
 Thumbs.db
-desktop.ini
-.DS_Store
+Desktop.ini
 
-# ── 编辑器 / IDE ──────────────────────────────────────────
-.vscode/
-.idea/
-*.swp
+# ZCode 会话配置（不属于项目）
+.zcode/
+
+# 工具残留空文件
+usb-sync/debug
+usb-sync/release

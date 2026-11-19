@@ -1,0 +1,6 @@
+# 构建产物放在 Obsidian 库之外（E 盘独立目录），避免仓库膨胀
+[build]
+target-dir = "E:\\rust-target\\usb-sync"
+
+[target.x86_64-pc-windows-gnu]
+# GNU 工具链自包含 MinGW 链接器，无需 Visual Studio
